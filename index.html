@@ -24,7 +24,7 @@
     canvas{
       width:100vw; height:100vh;
       display:block;
-      image-rendering: pixelated;
+      image-rendering: pixelated; /* CSS-side */
     }
 
     .hud{ position:fixed; inset:0; pointer-events:none; }
@@ -148,11 +148,15 @@
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
 
+    // IMPORTANT: keep pixels crisp
+    ctx.imageSmoothingEnabled = false;
+
     function resize(){
       const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
       canvas.width  = Math.floor(window.innerWidth  * dpr);
       canvas.height = Math.floor(window.innerHeight * dpr);
       ctx.setTransform(dpr,0,0,dpr,0,0); // draw in CSS pixels
+      ctx.imageSmoothingEnabled = false; // browsers can reset this on resize
     }
     window.addEventListener("resize", resize, {passive:true});
     resize();
@@ -203,13 +207,15 @@
     );
 
     // =========================
-    // Assets (sprite sheet)
+    // Assets (16-bit sprite sheet)
     // =========================
+    // Put this file next to index.html:
+    //   kade_spritesheet_16bit_64.png
     const sheet = new Image();
-    sheet.src = "./kade_spritesheet_64.png"; // MUST be in the same folder as index.html
+    sheet.src = "./kade_spritesheet_16bit_64.png";
     let sheetReady = false;
     sheet.onload = ()=> sheetReady = true;
-    sheet.onerror = ()=> alert("Sprite sheet NOT found! Put kade_spritesheet_64.png next to index.html (exact name).");
+    sheet.onerror = ()=> alert("Sprite sheet NOT found! Put kade_spritesheet_16bit_64.png next to index.html (exact name).");
 
     const SPR_W = 64, SPR_H = 64;
     const anims = {
@@ -250,7 +256,8 @@
     // =========================
     const player = {
       x: 120, y: 420,
-      w: 52, h: 70,
+      // Keep sprite size near native for best pixel look
+      w: 64, h: 64,
       vx: 0, vy: 0,
       onGround: false,
       face: 1,
@@ -427,7 +434,7 @@
       const rangeW = 42;
       const rangeH = 34;
       const ax = player.face === 1 ? (player.x + player.w - 6) : (player.x - rangeW + 6);
-      const ay = player.y + 18;
+      const ay = player.y + 14;
       return { x: ax, y: ay, w: rangeW, h: rangeH };
     }
 
@@ -494,7 +501,6 @@
         setState("attack");
       } else if (!player.onGround) {
         setState("jump");
-        // rising/falling frame
         player.frame = (player.vy < 0) ? 0 : 1;
       } else {
         const moving = (input.left || input.right);
@@ -502,7 +508,7 @@
         else setState("idle");
       }
 
-      // ✅ ADVANCE ANIMATION FRAMES (this was missing before)
+      // advance frames (keep jump on manual frame)
       if (player.state !== "jump") {
         stepAnim(dt);
       }
