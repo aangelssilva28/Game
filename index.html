@@ -504,17 +504,20 @@ html = r"""<!doctype html>
         }
       }
 
-      // choose animation state
-      if (player.attacking){
-        setState("attack");
-      } else if (!player.onGround){
-        setState("jump");
-      } else if (Math.abs(player.vx) > 30){
-        setState("run");
-      } else {
-        setState("idle");
-      }
-      stepAnim(dt);
+// choose animation state
+if (player.attacking) {
+  setState("attack");
+} else if (!player.onGround) {
+  setState("jump");
+
+  // OPTIONAL: pick jump frame based on rising/falling
+  player.frame = (player.vy < 0) ? 0 : 1;
+
+} else {
+  const moving = (input.left || input.right);
+  if (moving) setState("run");
+  else setState("idle");
+}
 
       // ---- ENEMY UPDATE ----
       for (const e of enemies){
