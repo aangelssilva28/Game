@@ -1,0 +1,627 @@
+from pathlib import Path
+
+html = r"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Kade – Mini Metroidvania Prototype</title>
+  <style>
+    :root{
+      --ui: rgba(20, 26, 24, 0.75);
+      --ui2: rgba(255,255,255,0.12);
+      --accent: #ff7a2f;
+      --accent2: #37d6ff;
+      --text: #e9f2ee;
+    }
+    html,body{
+      margin:0; height:100%;
+      background:#0b1411;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--text);
+      overflow:hidden;
+      touch-action:none;
+    }
+    #wrap{ position:fixed; inset:0; }
+    canvas{
+      width:100vw; height:100vh;
+      display:block;
+      image-rendering: pixelated;
+    }
+
+    .hud{ position:fixed; inset:0; pointer-events:none; }
+    .hint{
+      position:absolute;
+      top: max(10px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,.35);
+      border: 1px solid rgba(255,255,255,.10);
+      padding:10px 14px;
+      border-radius:999px;
+      font-size:13px;
+      pointer-events:none;
+      white-space:nowrap;
+    }
+    .hint b{ color: var(--accent2); }
+
+    .panel{
+      position:absolute;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      left: max(12px, env(safe-area-inset-left));
+      pointer-events:auto;
+      user-select:none; -webkit-user-select:none;
+      display:grid;
+      grid-template-columns: 64px 64px 64px;
+      grid-template-rows: 64px 64px 64px;
+      gap:10px;
+      padding:12px;
+      border-radius:18px;
+      background: var(--ui);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 12px 30px rgba(0,0,0,.45);
+    }
+    .btn{
+      display:flex; align-items:center; justify-content:center;
+      border-radius:16px;
+      background: var(--ui2);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: var(--text);
+      font-weight: 800;
+      font-size: 18px;
+      letter-spacing: .5px;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
+      cursor:pointer;
+      touch-action:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active{ transform: scale(0.98); }
+    .btn .arrow{ font-size: 22px; line-height:1; }
+    .up    { grid-column:2; grid-row:1; }
+    .left  { grid-column:1; grid-row:2; }
+    .down  { grid-column:2; grid-row:3; }
+    .right { grid-column:3; grid-row:2; }
+    .mid   { grid-column:2; grid-row:2; opacity:.35; }
+
+    .abtnWrap{
+      position:absolute;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      right: max(12px, env(safe-area-inset-right));
+      pointer-events:auto;
+      user-select:none; -webkit-user-select:none;
+      padding:12px;
+      border-radius:18px;
+      background: var(--ui);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 12px 30px rgba(0,0,0,.45);
+      display:flex; align-items:center; justify-content:center;
+      width:120px; height:120px;
+    }
+    .abtn{
+      width:92px; height:92px;
+      border-radius:999px;
+      background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.18), rgba(255,255,255,.06));
+      border:1px solid rgba(255,255,255,0.18);
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,.18), 0 12px 24px rgba(0,0,0,.35);
+      color: var(--text);
+      font-weight: 900;
+      font-size: 28px;
+      display:flex; align-items:center; justify-content:center;
+      position:relative;
+      cursor:pointer;
+      touch-action:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .abtn::after{
+      content:"";
+      position:absolute; inset:10px;
+      border-radius:999px;
+      box-shadow: 0 0 0 2px rgba(255,122,47,.35);
+      opacity:.8;
+    }
+    .abtn:active{ transform: scale(0.97); }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game"></canvas>
+  </div>
+
+  <div class="hud">
+    <div class="hint">Move: <b>D-Pad</b> / Arrow Keys • Jump: <b>Up</b> / Space • Attack: <b>A</b> / Z</div>
+
+    <div class="panel" aria-label="D-pad">
+      <div class="btn up"    data-key="up"><span class="arrow">▲</span></div>
+      <div class="btn left"  data-key="left"><span class="arrow">◀</span></div>
+      <div class="btn mid" aria-hidden="true">•</div>
+      <div class="btn right" data-key="right"><span class="arrow">▶</span></div>
+      <div class="btn down"  data-key="down"><span class="arrow">▼</span></div>
+    </div>
+
+    <div class="abtnWrap">
+      <div class="abtn" id="btnA" aria-label="A button">A</div>
+    </div>
+  </div>
+
+  <script>
+    // =========================
+    // Canvas / Resize
+    // =========================
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    function resize(){
+      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      canvas.width  = Math.floor(window.innerWidth  * dpr);
+      canvas.height = Math.floor(window.innerHeight * dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0); // draw in CSS pixels
+    }
+    window.addEventListener("resize", resize, {passive:true});
+    resize();
+
+    // =========================
+    // Input
+    // =========================
+    const input = { left:false, right:false, up:false, down:false, attack:false };
+    window.addEventListener("keydown", (e)=>{
+      const k = e.key;
+      if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," ","z","Z"].includes(k)) e.preventDefault();
+      if (k==="ArrowLeft") input.left = true;
+      if (k==="ArrowRight") input.right = true;
+      if (k==="ArrowUp") input.up = true;
+      if (k==="ArrowDown") input.down = true;
+      if (k===" ") input.up = true; // Space = jump
+      if (k==="z" || k==="Z") input.attack = true;
+    }, {passive:false});
+    window.addEventListener("keyup", (e)=>{
+      const k = e.key;
+      if (k==="ArrowLeft") input.left = false;
+      if (k==="ArrowRight") input.right = false;
+      if (k==="ArrowUp") input.up = false;
+      if (k==="ArrowDown") input.down = false;
+      if (k===" ") input.up = false;
+      if (k==="z" || k==="Z") input.attack = false;
+    }, {passive:true});
+
+    function bindHoldButton(el, onDown, onUp){
+      const down = (e)=>{ e.preventDefault(); onDown(); };
+      const up   = (e)=>{ e.preventDefault(); onUp(); };
+      el.addEventListener("pointerdown", down, { passive:false });
+      el.addEventListener("pointerup", up, { passive:false });
+      el.addEventListener("pointercancel", up, { passive:false });
+      el.addEventListener("pointerleave", up, { passive:false });
+    }
+    document.querySelectorAll(".btn[data-key]").forEach(btn=>{
+      const k = btn.dataset.key;
+      bindHoldButton(btn, ()=>{ input[k]=true; }, ()=>{ input[k]=false; });
+    });
+    bindHoldButton(document.getElementById("btnA"), ()=>{ input.attack = true; }, ()=>{ input.attack = false; });
+
+    // =========================
+    // Assets (sprite sheet)
+    // =========================
+    // Sprite sheet layout (generated):
+    // row 0: idle (4 frames)
+    // row 1: run  (6 frames)
+    // row 2: jump (2 frames)
+    // row 3: attack (4 frames)
+    const sheet = new Image();
+    sheet.src = "kade_spritesheet_64.png"; // put next to index.html
+    let sheetReady = false;
+    sheet.onload = ()=> sheetReady = true;
+
+    const SPR_W = 64, SPR_H = 64;
+    const anims = {
+      idle:   { row:0, frames:4, fps:7  },
+      run:    { row:1, frames:6, fps:12 },
+      jump:   { row:2, frames:2, fps:6  },
+      attack: { row:3, frames:4, fps:16 },
+    };
+
+    // =========================
+    // World / Platforms
+    // =========================
+    const world = {
+      gravity: 1900,
+      friction: 0.84,
+      airFriction: 0.985,
+      jumpVel: -730,
+      moveAccel: 2600,
+      maxSpeed: 380
+    };
+
+    const platforms = [
+      {x:-1000, y:560, w:4200, h:300},  // ground
+      {x:160, y:470, w:170, h:30},
+      {x:420, y:410, w:240, h:30},
+      {x:740, y:350, w:220, h:30},
+      {x:1040, y:460, w:200, h:30},
+      {x:1270, y:390, w:210, h:30},
+      {x:560, y:510, w:70, h:50},
+      {x:630, y:470, w:70, h:90},
+      {x:700, y:430, w:70, h:130},
+      {x:280, y:520, w:95, h:20},
+      {x:1100, y:520, w:95, h:20},
+    ];
+
+    // =========================
+    // Player
+    // =========================
+    const player = {
+      x: 120, y: 420,
+      w: 52, h: 70,
+      vx: 0, vy: 0,
+      onGround: false,
+      face: 1,
+      // animation
+      state: "idle",
+      frame: 0,
+      frameT: 0,
+      // attack
+      attacking: false,
+      attackT: 0,
+      attackCooldown: 0,
+      // combat
+      hp: 5
+    };
+
+    // =========================
+    // Enemies (simple dummies)
+    // =========================
+    const enemies = [
+      { x: 860, y: 300, w: 44, h: 40, vx: 60, vy: 0, onGround:false, hp: 3, minX: 820, maxX: 980, hitT:0 },
+      { x: 1180, y: 300, w: 44, h: 40, vx: -60, vy: 0, onGround:false, hp: 3, minX: 1120, maxX: 1360, hitT:0 },
+    ];
+
+    const cam = { x:0, y:0 };
+
+    // =========================
+    // Helpers
+    // =========================
+    const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
+    function rectsOverlap(a,b){
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function resolveEntityCollisions(ent, prevX, prevY){
+      ent.onGround = false;
+      const box = { x: ent.x, y: ent.y, w: ent.w, h: ent.h };
+
+      for (const p of platforms){
+        if (!rectsOverlap(box, p)) continue;
+
+        const prevBox = { x: prevX, y: prevY, w: ent.w, h: ent.h };
+
+        if (prevBox.y + prevBox.h <= p.y && ent.vy >= 0){
+          ent.y = p.y - ent.h;
+          ent.vy = 0;
+          ent.onGround = true;
+        } else if (prevBox.y >= p.y + p.h && ent.vy < 0){
+          ent.y = p.y + p.h;
+          ent.vy = 0;
+        } else if (prevBox.x + prevBox.w <= p.x && ent.vx > 0){
+          ent.x = p.x - ent.w;
+          ent.vx = 0;
+        } else if (prevBox.x >= p.x + p.w && ent.vx < 0){
+          ent.x = p.x + p.w;
+          ent.vx = 0;
+        }
+
+        box.x = ent.x; box.y = ent.y;
+      }
+    }
+
+    // =========================
+    // Background (basic forest)
+    // =========================
+    function drawForestBackground(w,h){
+      const g = ctx.createLinearGradient(0,0,0,h);
+      g.addColorStop(0, "#0e2431");
+      g.addColorStop(0.55, "#0b1a17");
+      g.addColorStop(1, "#07110f");
+      ctx.fillStyle = g;
+      ctx.fillRect(0,0,w,h);
+
+      // mist
+      ctx.fillStyle = "rgba(190,230,220,0.06)";
+      for(let i=0;i<7;i++){
+        const y = (h*0.12) + i*(h*0.1);
+        ctx.fillRect(0, y, w, h*0.08);
+      }
+
+      // far trees
+      const baseY = h*0.62;
+      ctx.fillStyle = "rgba(18,45,36,0.65)";
+      for(let i=0;i<44;i++){
+        const x = (i*90 - (cam.x*0.18)%90);
+        const tw = 48 + (i%5)*8;
+        const th = 140 + (i%7)*18;
+        ctx.beginPath();
+        ctx.moveTo(x+tw/2, baseY-th);
+        ctx.lineTo(x, baseY);
+        ctx.lineTo(x+tw, baseY);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // near trees
+      ctx.fillStyle = "rgba(16,58,42,0.85)";
+      for(let i=0;i<30;i++){
+        const x = (i*130 - (cam.x*0.35)%130);
+        const tw = 72 + (i%6)*10;
+        const th = 220 + (i%8)*20;
+        const y = h*0.72;
+        ctx.beginPath();
+        ctx.moveTo(x+tw/2, y-th);
+        ctx.lineTo(x, y);
+        ctx.lineTo(x+tw, y);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // ground haze
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fillRect(0, h*0.78, w, h*0.22);
+    }
+
+    function drawPlatforms(){
+      for (const p of platforms){
+        const x = p.x - cam.x;
+        const y = p.y - cam.y;
+        ctx.fillStyle = "rgba(30, 33, 28, 0.95)";
+        ctx.fillRect(x, y, p.w, p.h);
+
+        ctx.fillStyle = "rgba(55, 100, 70, 0.75)";
+        ctx.fillRect(x, y, p.w, Math.min(10, p.h));
+
+        ctx.fillStyle = "rgba(255,255,255,0.08)";
+        ctx.fillRect(x, y+10, p.w, 2);
+
+        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        for(let i=0;i<p.w;i+=32){
+          ctx.fillRect(x+i, y+12, 1, Math.min(p.h-12, 18));
+        }
+      }
+    }
+
+    // =========================
+    // Sprite draw / Anim
+    // =========================
+    function drawSprite(animName, frameIndex, x, y, w, h, flip){
+      if (!sheetReady){
+        ctx.fillStyle = "#1b2731";
+        ctx.fillRect(x,y,w,h);
+        return;
+      }
+      const a = anims[animName];
+      const sx = frameIndex * SPR_W;
+      const sy = a.row * SPR_H;
+
+      ctx.save();
+      if (flip){
+        ctx.translate(x + w, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(sheet, sx, sy, SPR_W, SPR_H, 0, y, w, h);
+      } else {
+        ctx.drawImage(sheet, sx, sy, SPR_W, SPR_H, x, y, w, h);
+      }
+      ctx.restore();
+    }
+
+    function setState(name){
+      if (player.state !== name){
+        player.state = name;
+        player.frame = 0;
+        player.frameT = 0;
+      }
+    }
+
+    function stepAnim(dt){
+      const a = anims[player.state];
+      player.frameT += dt;
+      const spf = 1 / a.fps;
+      while (player.frameT >= spf){
+        player.frameT -= spf;
+        player.frame = (player.frame + 1) % a.frames;
+      }
+    }
+
+    // =========================
+    // Combat
+    // =========================
+    function getAttackBox(){
+      // active box in front of player
+      const rangeW = 42;
+      const rangeH = 34;
+      const ax = player.face === 1 ? (player.x + player.w - 6) : (player.x - rangeW + 6);
+      const ay = player.y + 18;
+      return { x: ax, y: ay, w: rangeW, h: rangeH };
+    }
+
+    function doAttack(){
+      if (player.attackCooldown > 0) return;
+      player.attacking = true;
+      player.attackT = 0.18;          // duration
+      player.attackCooldown = 0.22;    // small cooldown
+      setState("attack");
+      player.frame = 0;
+      player.frameT = 0;
+    }
+
+    // =========================
+    // Game Loop
+    // =========================
+    let last = performance.now();
+    function tick(now){
+      const dt = Math.min(0.033, (now-last)/1000);
+      last = now;
+
+      // ---- PLAYER UPDATE ----
+      const prevX = player.x, prevY = player.y;
+
+      // movement
+      if (input.left){
+        player.vx -= world.moveAccel * dt;
+        player.face = -1;
+      }
+      if (input.right){
+        player.vx += world.moveAccel * dt;
+        player.face = 1;
+      }
+      player.vx = clamp(player.vx, -world.maxSpeed, world.maxSpeed);
+
+      // attack (A button / Z)
+      if (input.attack && !player.attacking){
+        doAttack();
+      }
+
+      // jump (UP / Space)
+      if (input.up && player.onGround && !player.attacking){
+        player.vy = world.jumpVel;
+        player.onGround = false;
+      }
+
+      // gravity
+      player.vy += world.gravity * dt;
+
+      // integrate
+      player.x += player.vx * dt;
+      player.y += player.vy * dt;
+
+      // friction
+      if (player.onGround) player.vx *= world.friction;
+      else player.vx *= world.airFriction;
+
+      // collisions
+      resolveEntityCollisions(player, prevX, prevY);
+
+      // attack timers
+      if (player.attackCooldown > 0) player.attackCooldown -= dt;
+      if (player.attacking){
+        player.attackT -= dt;
+        if (player.attackT <= 0){
+          player.attacking = false;
+        }
+      }
+
+      // choose animation state
+      if (player.attacking){
+        setState("attack");
+      } else if (!player.onGround){
+        setState("jump");
+      } else if (Math.abs(player.vx) > 30){
+        setState("run");
+      } else {
+        setState("idle");
+      }
+      stepAnim(dt);
+
+      // ---- ENEMY UPDATE ----
+      for (const e of enemies){
+        if (e.hp <= 0) continue;
+
+        const ePrevX = e.x, ePrevY = e.y;
+
+        // basic patrol
+        if (e.onGround){
+          if (e.x < e.minX) e.vx = Math.abs(e.vx);
+          if (e.x > e.maxX) e.vx = -Math.abs(e.vx);
+        }
+
+        // gravity
+        e.vy += world.gravity * dt;
+
+        // integrate
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+
+        // collisions
+        resolveEntityCollisions(e, ePrevX, ePrevY);
+
+        // mild damping
+        if (e.onGround) e.vx *= 0.995;
+
+        if (e.hitT > 0) e.hitT -= dt;
+      }
+
+      // ---- ATTACK HIT DETECTION ----
+      if (player.attacking){
+        // only "active" during mid attack frames (feels better)
+        const active = (player.frame === 1 || player.frame === 2);
+        if (active){
+          const atk = getAttackBox();
+          for (const e of enemies){
+            if (e.hp <= 0 || e.hitT > 0) continue;
+            if (rectsOverlap(atk, e)){
+              e.hp -= 1;
+              e.hitT = 0.18; // invuln window
+              e.vx = player.face * 360; // knockback
+              e.vy = -320;
+            }
+          }
+        }
+      }
+
+      // camera follow
+      cam.x = player.x - (window.innerWidth * 0.5) + player.w*0.5;
+      cam.y = 0;
+
+      // ---- DRAW ----
+      const w = window.innerWidth, h = window.innerHeight;
+      ctx.clearRect(0,0,w,h);
+
+      drawForestBackground(w,h);
+      drawPlatforms();
+
+      // enemies
+      for (const e of enemies){
+        if (e.hp <= 0) continue;
+        const ex = Math.round(e.x - cam.x);
+        const ey = Math.round(e.y - cam.y);
+
+        // body
+        ctx.fillStyle = e.hitT > 0 ? "rgba(255,122,47,0.85)" : "rgba(40, 60, 52, 0.95)";
+        ctx.fillRect(ex, ey, e.w, e.h);
+
+        // eyes
+        ctx.fillStyle = "rgba(55,214,255,0.9)";
+        ctx.fillRect(ex+10, ey+12, 6, 4);
+        ctx.fillRect(ex+26, ey+12, 6, 4);
+
+        // hp pips
+        for(let i=0;i<e.hp;i++){
+          ctx.fillStyle = "rgba(233,242,238,0.6)";
+          ctx.fillRect(ex + i*10, ey-10, 8, 4);
+        }
+      }
+
+      // player sprite
+      const px = Math.round(player.x - cam.x);
+      const py = Math.round(player.y - cam.y);
+      drawSprite(player.state, player.frame, px, py, player.w, player.h, player.face === -1);
+
+      // attack box debug (optional) - comment out if you don't want it
+      // if (player.attacking){
+      //   const atk = getAttackBox();
+      //   ctx.strokeStyle = "rgba(255,122,47,0.8)";
+      //   ctx.strokeRect(atk.x - cam.x, atk.y - cam.y, atk.w, atk.h);
+      // }
+
+      // player HUD hearts
+      for(let i=0;i<player.hp;i++){
+        ctx.fillStyle = "rgba(255,122,47,0.9)";
+        ctx.fillRect(14 + i*18, 14, 14, 10);
+      }
+
+      requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
+"""
+
+out_html = Path("/mnt/data/index.html")
+out_html.write_text(html, encoding="utf-8")
+out_html
