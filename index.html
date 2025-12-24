@@ -1,6 +1,4 @@
-from pathlib import Path
-
-html = r"""<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -163,6 +161,7 @@ html = r"""<!doctype html>
     // Input
     // =========================
     const input = { left:false, right:false, up:false, down:false, attack:false };
+
     window.addEventListener("keydown", (e)=>{
       const k = e.key;
       if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"," ","z","Z"].includes(k)) e.preventDefault();
@@ -173,6 +172,7 @@ html = r"""<!doctype html>
       if (k===" ") input.up = true; // Space = jump
       if (k==="z" || k==="Z") input.attack = true;
     }, {passive:false});
+
     window.addEventListener("keyup", (e)=>{
       const k = e.key;
       if (k==="ArrowLeft") input.left = false;
@@ -191,24 +191,25 @@ html = r"""<!doctype html>
       el.addEventListener("pointercancel", up, { passive:false });
       el.addEventListener("pointerleave", up, { passive:false });
     }
+
     document.querySelectorAll(".btn[data-key]").forEach(btn=>{
       const k = btn.dataset.key;
       bindHoldButton(btn, ()=>{ input[k]=true; }, ()=>{ input[k]=false; });
     });
-    bindHoldButton(document.getElementById("btnA"), ()=>{ input.attack = true; }, ()=>{ input.attack = false; });
+
+    bindHoldButton(document.getElementById("btnA"),
+      ()=>{ input.attack = true; },
+      ()=>{ input.attack = false; }
+    );
 
     // =========================
     // Assets (sprite sheet)
     // =========================
-    // Sprite sheet layout (generated):
-    // row 0: idle (4 frames)
-    // row 1: run  (6 frames)
-    // row 2: jump (2 frames)
-    // row 3: attack (4 frames)
     const sheet = new Image();
-    sheet.src = "kade_spritesheet_64.png"; // put next to index.html
+    sheet.src = "./kade_spritesheet_64.png"; // MUST be in the same folder as index.html
     let sheetReady = false;
     sheet.onload = ()=> sheetReady = true;
+    sheet.onerror = ()=> alert("Sprite sheet NOT found! Put kade_spritesheet_64.png next to index.html (exact name).");
 
     const SPR_W = 64, SPR_H = 64;
     const anims = {
@@ -253,15 +254,12 @@ html = r"""<!doctype html>
       vx: 0, vy: 0,
       onGround: false,
       face: 1,
-      // animation
       state: "idle",
       frame: 0,
       frameT: 0,
-      // attack
       attacking: false,
       attackT: 0,
       attackCooldown: 0,
-      // combat
       hp: 5
     };
 
@@ -322,14 +320,12 @@ html = r"""<!doctype html>
       ctx.fillStyle = g;
       ctx.fillRect(0,0,w,h);
 
-      // mist
       ctx.fillStyle = "rgba(190,230,220,0.06)";
       for(let i=0;i<7;i++){
         const y = (h*0.12) + i*(h*0.1);
         ctx.fillRect(0, y, w, h*0.08);
       }
 
-      // far trees
       const baseY = h*0.62;
       ctx.fillStyle = "rgba(18,45,36,0.65)";
       for(let i=0;i<44;i++){
@@ -344,7 +340,6 @@ html = r"""<!doctype html>
         ctx.fill();
       }
 
-      // near trees
       ctx.fillStyle = "rgba(16,58,42,0.85)";
       for(let i=0;i<30;i++){
         const x = (i*130 - (cam.x*0.35)%130);
@@ -359,7 +354,6 @@ html = r"""<!doctype html>
         ctx.fill();
       }
 
-      // ground haze
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.fillRect(0, h*0.78, w, h*0.22);
     }
@@ -430,7 +424,6 @@ html = r"""<!doctype html>
     // Combat
     // =========================
     function getAttackBox(){
-      // active box in front of player
       const rangeW = 42;
       const rangeH = 34;
       const ax = player.face === 1 ? (player.x + player.w - 6) : (player.x - rangeW + 6);
@@ -441,8 +434,8 @@ html = r"""<!doctype html>
     function doAttack(){
       if (player.attackCooldown > 0) return;
       player.attacking = true;
-      player.attackT = 0.18;          // duration
-      player.attackCooldown = 0.22;    // small cooldown
+      player.attackT = 0.18;
+      player.attackCooldown = 0.22;
       setState("attack");
       player.frame = 0;
       player.frameT = 0;
@@ -459,7 +452,6 @@ html = r"""<!doctype html>
       // ---- PLAYER UPDATE ----
       const prevX = player.x, prevY = player.y;
 
-      // movement
       if (input.left){
         player.vx -= world.moveAccel * dt;
         player.face = -1;
@@ -470,32 +462,25 @@ html = r"""<!doctype html>
       }
       player.vx = clamp(player.vx, -world.maxSpeed, world.maxSpeed);
 
-      // attack (A button / Z)
       if (input.attack && !player.attacking){
         doAttack();
       }
 
-      // jump (UP / Space)
       if (input.up && player.onGround && !player.attacking){
         player.vy = world.jumpVel;
         player.onGround = false;
       }
 
-      // gravity
       player.vy += world.gravity * dt;
 
-      // integrate
       player.x += player.vx * dt;
       player.y += player.vy * dt;
 
-      // friction
       if (player.onGround) player.vx *= world.friction;
       else player.vx *= world.airFriction;
 
-      // collisions
       resolveEntityCollisions(player, prevX, prevY);
 
-      // attack timers
       if (player.attackCooldown > 0) player.attackCooldown -= dt;
       if (player.attacking){
         player.attackT -= dt;
@@ -504,20 +489,23 @@ html = r"""<!doctype html>
         }
       }
 
-// choose animation state
-if (player.attacking) {
-  setState("attack");
-} else if (!player.onGround) {
-  setState("jump");
+      // ---- ANIMATION STATE ----
+      if (player.attacking) {
+        setState("attack");
+      } else if (!player.onGround) {
+        setState("jump");
+        // rising/falling frame
+        player.frame = (player.vy < 0) ? 0 : 1;
+      } else {
+        const moving = (input.left || input.right);
+        if (moving) setState("run");
+        else setState("idle");
+      }
 
-  // OPTIONAL: pick jump frame based on rising/falling
-  player.frame = (player.vy < 0) ? 0 : 1;
-
-} else {
-  const moving = (input.left || input.right);
-  if (moving) setState("run");
-  else setState("idle");
-}
+      // ✅ ADVANCE ANIMATION FRAMES (this was missing before)
+      if (player.state !== "jump") {
+        stepAnim(dt);
+      }
 
       // ---- ENEMY UPDATE ----
       for (const e of enemies){
@@ -525,31 +513,23 @@ if (player.attacking) {
 
         const ePrevX = e.x, ePrevY = e.y;
 
-        // basic patrol
         if (e.onGround){
           if (e.x < e.minX) e.vx = Math.abs(e.vx);
           if (e.x > e.maxX) e.vx = -Math.abs(e.vx);
         }
 
-        // gravity
         e.vy += world.gravity * dt;
-
-        // integrate
         e.x += e.vx * dt;
         e.y += e.vy * dt;
 
-        // collisions
         resolveEntityCollisions(e, ePrevX, ePrevY);
 
-        // mild damping
         if (e.onGround) e.vx *= 0.995;
-
         if (e.hitT > 0) e.hitT -= dt;
       }
 
       // ---- ATTACK HIT DETECTION ----
       if (player.attacking){
-        // only "active" during mid attack frames (feels better)
         const active = (player.frame === 1 || player.frame === 2);
         if (active){
           const atk = getAttackBox();
@@ -557,15 +537,14 @@ if (player.attacking) {
             if (e.hp <= 0 || e.hitT > 0) continue;
             if (rectsOverlap(atk, e)){
               e.hp -= 1;
-              e.hitT = 0.18; // invuln window
-              e.vx = player.face * 360; // knockback
+              e.hitT = 0.18;
+              e.vx = player.face * 360;
               e.vy = -320;
             }
           }
         }
       }
 
-      // camera follow
       cam.x = player.x - (window.innerWidth * 0.5) + player.w*0.5;
       cam.y = 0;
 
@@ -576,41 +555,28 @@ if (player.attacking) {
       drawForestBackground(w,h);
       drawPlatforms();
 
-      // enemies
       for (const e of enemies){
         if (e.hp <= 0) continue;
         const ex = Math.round(e.x - cam.x);
         const ey = Math.round(e.y - cam.y);
 
-        // body
         ctx.fillStyle = e.hitT > 0 ? "rgba(255,122,47,0.85)" : "rgba(40, 60, 52, 0.95)";
         ctx.fillRect(ex, ey, e.w, e.h);
 
-        // eyes
         ctx.fillStyle = "rgba(55,214,255,0.9)";
         ctx.fillRect(ex+10, ey+12, 6, 4);
         ctx.fillRect(ex+26, ey+12, 6, 4);
 
-        // hp pips
         for(let i=0;i<e.hp;i++){
           ctx.fillStyle = "rgba(233,242,238,0.6)";
           ctx.fillRect(ex + i*10, ey-10, 8, 4);
         }
       }
 
-      // player sprite
       const px = Math.round(player.x - cam.x);
       const py = Math.round(player.y - cam.y);
       drawSprite(player.state, player.frame, px, py, player.w, player.h, player.face === -1);
 
-      // attack box debug (optional) - comment out if you don't want it
-      // if (player.attacking){
-      //   const atk = getAttackBox();
-      //   ctx.strokeStyle = "rgba(255,122,47,0.8)";
-      //   ctx.strokeRect(atk.x - cam.x, atk.y - cam.y, atk.w, atk.h);
-      // }
-
-      // player HUD hearts
       for(let i=0;i<player.hp;i++){
         ctx.fillStyle = "rgba(255,122,47,0.9)";
         ctx.fillRect(14 + i*18, 14, 14, 10);
@@ -623,8 +589,3 @@ if (player.attacking) {
   </script>
 </body>
 </html>
-"""
-
-out_html = Path("/mnt/data/index.html")
-out_html.write_text(html, encoding="utf-8")
-out_html
